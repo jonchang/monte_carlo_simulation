@@ -123,13 +123,11 @@ Rcpp::List SimulateCPBDP(double time,                // the time to run the proc
   }
 
 ret_label:
-  Rcpp::List ret = Rcpp::List::create();
-  const char* keys[] = {"time", "number_of_species", "speciation_rates", "extinction_rates"};
-  std::vector<std::string> keys_vec(keys, std::end(keys));
-  ret.push_back(return_time);
-  ret.push_back(number_of_species);
-  ret.push_back(speciation_rates);
-  ret.push_back(extinction_rates);
-  ret.names() = keys_vec;
-  return ret;
+  Rcpp::DataFrame ret_df = Rcpp::DataFrame::create(
+          Rcpp::_["number_of_species"]= number_of_species,
+          Rcpp::_["speciation_rates"]= speciation_rates,
+          Rcpp::_["extinction_rates"]= extinction_rates);
+  return Rcpp::List::create(
+          Rcpp::_["time"] = return_time,
+          Rcpp::_["data"] = ret_df);
 }
