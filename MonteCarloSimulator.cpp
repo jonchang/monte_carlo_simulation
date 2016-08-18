@@ -1,12 +1,12 @@
 #include <Rcpp.h>
 
 // [[Rcpp::export]]
-double SimulateCPBDP(double time,                // the time to run the process for
-                      double init_lambda,         // the initial speciation rate
-                      double init_mu,             // the initial extinction rate
-                      double transition_rate,     // the rate at which new processes arise
-                      double lambda_prior,        // the rate of the speciation-rate exponential prior
-                      double mu_prior){           // the rate of the extinction-rate exponential prior
+Rcpp::List SimulateCPBDP(double time,                // the time to run the process for
+                         double init_lambda,         // the initial speciation rate
+                         double init_mu,             // the initial extinction rate
+                         double transition_rate,     // the rate at which new processes arise
+                         double lambda_prior,        // the rate of the speciation-rate exponential prior
+                         double mu_prior){           // the rate of the extinction-rate exponential prior
   
   double current_time = 0;
   
@@ -25,6 +25,8 @@ double SimulateCPBDP(double time,                // the time to run the process 
   speciation_rates.push_back(init_lambda);
   std::vector<double> extinction_rates;
   extinction_rates.push_back(init_mu);
+
+  double return_time = 0;
   
   while (true) {
     
@@ -45,7 +47,8 @@ double SimulateCPBDP(double time,                // the time to run the process 
     
     // if we have exceeded the time allowed, end the simulation
     if ( current_time >= time ) {
-      return time;
+      return_time = time;
+      goto ret_label;
     }
     
     // get a random uniform number
@@ -89,7 +92,8 @@ double SimulateCPBDP(double time,                // the time to run the process 
     
     // if the total number of species is 0, end the simulation and return the current time
     if ( num_of_species == 0 ) {
-      return current_time;
+      return_time = current_time;
+      goto ret_label;
     }
     
     // if the total number of species is large, check to see if the probability of 
@@ -111,12 +115,21 @@ double SimulateCPBDP(double time,                // the time to run the process 
       }
       // if the probability of ultimate extinction of _every_ species is less than 1 in a billion, end the simulation
       if ( p < 1e-9 ) {
-        return time;
+        return_time = time;
+        goto ret_label;
       }
     }
     
   }
-  
-  return current_time;
-  
+
+ret_label:
+  Rcpp::List ret = Rcpp::List::create();
+  const char* keys[] = {"time", "number_of_species", "speciation_rates", "extinction_rates"};
+  std::vector<std::string> keys_vec(keys, std::end(keys));
+  ret.push_back(return_time);
+  ret.push_back(number_of_species);
+  ret.push_back(speciation_rates);
+  ret.push_back(extinction_rates);
+  ret.names() = keys_vec;
+  return ret;
 }
