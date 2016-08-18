@@ -1,0 +1,112 @@
+Using the Monte Carlo Simulator
+===============================
+We use Monte Carlo simulation to approximate the probability that a single lineage evolving under the compound-Poisson-birth-death process initiated at time $t$ (in the past) goes extinct by the present, $t_\text{max}$. 
+Note: this simulator assumes that the speciation- and extinction-rates are time-homogeneous, _i.e_ $z = 0$, and therefore this simulator is only useful for estimating the extinction probabilities under this scenario.
+
+We initialize the process at time $t = 0$ with speciation and extinction rates $\lambda_\text{init}$ and $\mu_\text{init}$, respectively.
+This process continues forward in time, with the diversification process for a given lineage changing at rate $\eta$.
+The process terminates when the number of species drops to 0, or the time exceeds the present.
+We then return the termination time for the process.
+We repeat this simulation $N$ times, and compute the fraction of simulations that terminated before the present:
+$$
+\widehat{E(t)} = \frac{1}{N}\sum\limits_{i = 1}^{N}I(t^i_\text{end}),
+$$
+where
+$$
+		I(t_\text{end}^i) = \begin{cases}
+						1 & \text{if } t_\text{end}^i < t_\text{max} \\
+						0 & \text{otherwise}.
+					\end{cases}
+$$
+
+Compiling the Monte Carlo simulator
+-----
+First, change your working directory to the monte_carlo_simulation folder of the Dryad archive.
+Execute the following line, replacing the "..." with  the path to this folder.
+```{r eval=FALSE}
+setwd("~/.../archive/code/monte_carlo_simulation")
+```
+
+Next, we must compile the C++ code for the Monte Carlo simulator.
+This requires the Rcpp library.
+```{r}
+library(Rcpp)
+sourceCpp("MonteCarloSimulator.cpp")
+```
+
+Using the Monte Carlo simulator
+-----
+The simulator requires 6 inputs: the maximum time of the process (time), the initial speciation rate, the initial extinction rate, the transition rate, the rate of the exponential prior distribution of the speciation rate, and the rate of the exponential prior distribution of the extinction rate.
+The exponential rates are used to draw new values for the speciation and extincition rate for each new diversification process.
+```{r}
+time               <- 1
+initial_speciation <- 1
+initial_extinction <- 0.5
+transition_rate    <- 1
+speciation_prior   <- 1
+extinction_prior   <- 1
+```
+We can simulate a single termination time under these parameters.
+```{r}
+extinction_time <- SimulateCPBDP(time,
+                                initial_speciation,
+                                initial_extinction,
+                                transition_rate,
+                                speciation_prior,
+                                extinction_prior)
+extinction_time
+```
+If the extinction time equals or exceeds the maximum time, then the process survived to the present.
+
+We can repeat this process many of times, keeping track of extinction times, to approximate the probability that a lineage goes extinct by the present.
+```{r}
+reps <- 50000
+extinction_times <- numeric(reps)
+for(i in 1:reps){
+  extinction_times[i] <- SimulateCPBDP(time,
+                                      initial_speciation,
+                                      initial_extinction,
+                                      transition_rate,
+                                      speciation_prior,
+                                      extinction_prior)
+}
+```
+The Monte Carlo estimate of the extinction probability, $\widehat{E(t)}$, is the fraction of simulations that died before the present
+```{r}
+mean(extinction_times < time)
+```
+In this case, the Monte Carlo estimate of the extinction probability is $\widehat{E(t)} =$ `r mean(extinction_times < time)`.
+
+Validation
+----
+When the transition rate is 0, the compound-Poisson birth-death process is a simple constant-rate birth-death process.
+We can compute the extinction probability of a single lineage at time $t$ under the constant-rate birth-death process analytically:
+$$
+E(t) = 1 - \frac{\lambda-\mu}{\lambda - \mu \mathrm{exp}\left[(\mu-\lambda)(t_\text{max}-t)\right])}
+$$
+
+To demonstrate the validity of the Monte Carlo simulator, we can compare the estimated extinction probability when the transition rate is 0 to the analytical probability.
+We do this for a range of times, and for particular values of $\lambda$ and $\mu$.
+```{r}
+times  <- seq(0,1,by=0.1)
+lambda <- 1
+mu     <- 0.5
+```
+We compute the analytical extinction probabilities, and estimate the extinction probabilities.
+```{r}
+analytical_extinction_probabilities <- 1 - (lambda - mu) / (lambda - mu * exp( (mu - lambda) * times ))
+
+estimated_extinction_probabilities <- numeric(length(times))
+for(i in 1:length(times)){
+  extinction_times <- replicate(50000,SimulateCPBDP(times[i],lambda,mu,0,0,0))
+  estimated_extinction_probabilities[i] <- mean(extinction_times < times[i])
+}
+```
+No we compare the analytical values to the estimated values.
+```{r fig.align="center"}
+plot(x=times,y=analytical_extinction_probabilities,type="b",col="blue",ylab="extinction probability",pch=3)
+points(x=times,y=estimated_extinction_probabilities,type="b",col="red",pch=4)
+legend("topleft",legend=c("analytical","Monte Carlo estimate"),pch=c(3,4),col=c("blue","red"),bty="n",border=NA)
+```
+These values are nearly identical (with some Monte Carlo error), indicating that the Monte Carlo estimator of the extinction probability is valid.
+

@@ -1,0 +1,83 @@
+Using the Likelihood Function
+=====
+We implemented a likelihood function that computes the probability of the data by substituting $\widehat{E(t)}$ computed by Monte Carlo simulation into the likelihood function used by BAMM.
+
+First, change your working directory to the monte_carlo_simulation folder of the Dryad archive.
+Execute the following line, replacing the "..." with  the path to this folder.
+```{r eval=FALSE}
+setwd("~/.../archive/code/monte_carlo_simulation")
+```
+
+Next, we must compile the C++ code for the Monte Carlo simulator.
+This requires the Rcpp library.
+We also load the likelihood functions themselves.
+We'll need to use the R package BAMMtools to get priors on the speciation and extinction rates.
+```{r echo=FALSE}
+library(Rcpp)
+sourceCpp("MonteCarloSimulator.cpp")
+source("likelihoodFunctions.R")
+library(BAMMtools)
+```
+
+Like the Monte Carlo simulator, the likelihood function works only for time-homogeneous speciation- and extinction-rates.
+We performed a short MCMC on the whale tree and places some of the output in the working directory.
+We'll load the output and use one of the samples for which to compute the Monte-Carlo-corrected likelihood.
+```{r}
+whale_tree  <- read.tree("cetaceans.tre")
+event_data  <- read.table("cetaceans_event_data.txt",header=TRUE,sep=",")
+mcmc_output <- read.table("cetaceans_mcmc_out.txt",header=TRUE,sep=",")
+```
+
+We'll choose a generation from the MCMC arbitrarily, an extract the speciation- and extinction-rates associated with that generation.
+We'll also use the eventRate from the MCMC as a way of computing an instanteous rate of shifts, $\eta$, by dividing the expected number of events by the tree length.
+```{r}
+generation       <- sample(mcmc_output$generation,size=1)
+these_parameters <- event_data[event_data$generation == generation,]
+transition_rate  <- mcmc_output$eventRate[mcmc_output$generation == generation] / sum(whale_tree$edge.length)
+```
+
+We'll use the speciation and extinction rate priors estimated by BAMMtools to calculate the likelihood.
+```{r echo=FALSE}
+whale_priors <- setBAMMpriors(whale_tree,outfile=NULL)
+lambda_prior <- whale_priors[2,2]
+mu_prior     <- whale_priors[4,2]
+```
+
+Now we run the likelihood function using Monte Carlo and compare it to the value computed by BAMM.
+Warning: this may take a few minutes, as this code is not optimized (it is purely illustrative).
+```{r}
+log_likelihood <- MonteCarloLikelihood(whale_tree,
+                                       these_parameters,
+                                       transition_rate,
+                                       lambda_prior,
+                                       mu_prior)
+log_likelihood
+mcmc_output$logLik[mcmc_output$generation == generation]
+```
+
+Validation
+----
+If the transition rate for the CRBDP is 0, then the Monte Carlo estimated likelihood should be the same as the likelihood computed by BAMM.
+To validate our likelihood function, we can simply set the transition rate to 0 and compare the value to the likelihood computed by BAMM.
+Our likelihood function still uses Monte Carlo estimation of the extinction probability even when the transition rate is 0, so this estimate is still subject to Monte Carlo error, but the computed likelihoods should be approximately the same.
+The quality of this approximation improves as the number of Monte Carlo replicates and the granularity of the numerical likelihood function increase, which are controlled by the arguments `reps` and `num.intervals`, respectively.
+
+```{r}
+transition_rate <- 0
+log_likelihood_no_extinct_shifts <- MonteCarloLikelihood(whale_tree,
+                                                         these_parameters,
+                                                         transition_rate,
+                                                         lambda_prior,
+                                                         mu_prior)
+log_likelihood_no_extinct_shifts
+mcmc_output$logLik[mcmc_output$generation == generation]
+```
+
+
+
+
+
+
+
+
+
